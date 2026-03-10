@@ -75,10 +75,10 @@ canvas#gl { width: 100%; height: 100%; display: block; }
   <div class="section">
     <div class="section-header" onclick="toggleSection(this)">Display Text <span class="arrow">▼</span></div>
     <div class="section-body">
-      <div class="ctrl"><textarea id="displayText" rows="2">{{time}}</textarea></div>
+      <div class="ctrl"><textarea id="displayText" rows="2">Michael Culleton</textarea></div>
       <div class="ctrl" style="color:#666;font-size:10px;">Use {{time}} for live clock, {{date}} for date, or type anything.</div>
-      <div class="ctrl"><label>Font Size <span class="val" id="fontSizeVal">1.0</span></label>
-        <input type="range" id="fontSize" min="0.2" max="3" step="0.1" value="1.0"></div>
+      <div class="ctrl"><label>Font Size <span class="val" id="fontSizeVal">0.7</span></label>
+        <input type="range" id="fontSize" min="0.2" max="3" step="0.1" value="0.7"></div>
     </div>
   </div>
 
@@ -99,10 +99,10 @@ canvas#gl { width: 100%; height: 100%; display: block; }
     <div class="section-body">
       <div class="ctrl"><label>Glass Color</label>
         <input type="color" id="glassColor" value="#ffffff"></div>
-      <div class="ctrl"><label>Shadow <span class="val" id="shadowVal">0.05</span></label>
-        <input type="range" id="shadow" min="0" max="1" step="0.01" value="0.05"></div>
-      <div class="ctrl"><label>Brightness <span class="val" id="brightVal">0.05</span></label>
-        <input type="range" id="bright" min="0" max="1" step="0.01" value="0.05"></div>
+      <div class="ctrl"><label>Shadow <span class="val" id="shadowVal">0.00</span></label>
+        <input type="range" id="shadow" min="0" max="1" step="0.01" value="0"></div>
+      <div class="ctrl"><label>Brightness <span class="val" id="brightVal">1.00</span></label>
+        <input type="range" id="bright" min="0" max="1" step="0.01" value="1"></div>
     </div>
   </div>
 
@@ -112,11 +112,11 @@ canvas#gl { width: 100%; height: 100%; display: block; }
       <div class="ctrl"><label>Background</label>
         <input type="color" id="bgcolor" value="#000000"></div>
       <div class="ctrl"><label>Circle 1 (Hour)</label>
-        <input type="color" id="color1" value="#f77e2d"></div>
+        <input type="color" id="color1" value="#000000"></div>
       <div class="ctrl"><label>Circle 2 (Minute)</label>
-        <input type="color" id="color2" value="#32374a"></div>
+        <input type="color" id="color2" value="#000000"></div>
       <div class="ctrl"><label>Circle 3 (Second)</label>
-        <input type="color" id="color3" value="#f5f5f5"></div>
+        <input type="color" id="color3" value="#000000"></div>
     </div>
   </div>
 
@@ -124,16 +124,16 @@ canvas#gl { width: 100%; height: 100%; display: block; }
     <div class="section-header" onclick="toggleSection(this)">Dithering <span class="arrow">▼</span></div>
     <div class="section-body">
       <div class="ctrl ctrl-check"><input type="checkbox" id="ditherEnabled" checked><label for="ditherEnabled">Enable Dithering</label></div>
-      <div class="ctrl"><label>Grid Size <span class="val" id="ditherGridVal">4</span></label>
-        <input type="range" id="ditherGrid" min="1" max="16" step="1" value="4"></div>
+      <div class="ctrl"><label>Grid Size <span class="val" id="ditherGridVal">5</span></label>
+        <input type="range" id="ditherGrid" min="1" max="16" step="1" value="5"></div>
       <div class="ctrl"><label>Pixel Size Ratio <span class="val" id="ditherPixelVal">1.0</span></label>
         <input type="range" id="ditherPixel" min="0.5" max="4" step="0.1" value="1.0"></div>
       <div class="ctrl ctrl-check"><input type="checkbox" id="ditherGrayscale"><label for="ditherGrayscale">Grayscale Only</label></div>
       <div class="ctrl ctrl-check"><input type="checkbox" id="ditherInvert"><label for="ditherInvert">Invert Colors</label></div>
       <div class="ctrl"><label>Dither Tint Color</label>
-        <input type="color" id="ditherTint" value="#ffffff"></div>
-      <div class="ctrl"><label>Tint Strength <span class="val" id="ditherTintStrVal">0.0</span></label>
-        <input type="range" id="ditherTintStr" min="0" max="1" step="0.01" value="0.0"></div>
+        <input type="color" id="ditherTint" value="#ff0066"></div>
+      <div class="ctrl"><label>Tint Strength <span class="val" id="ditherTintStrVal">1.00</span></label>
+        <input type="range" id="ditherTintStr" min="0" max="1" step="0.01" value="1.0"></div>
     </div>
   </div>
 
@@ -203,7 +203,7 @@ document.querySelectorAll('.ctrl input[type="range"]').forEach(el => {
 // PRESETS
 // ============================================================
 const presets = {
-  default: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#ffffff', shadow:0.05, bright:0.05, bgcolor:'#000000', color1:'#f77e2d', color2:'#32374a', color3:'#f5f5f5', ditherEnabled:true, ditherGrid:4, ditherPixel:1, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ffffff', ditherTintStr:0 },
+  default: { displayText:'Michael Culleton', fontSize:0.7, feed:0.054, kill:0.0616, iteration:10, glassColor:'#ffffff', shadow:0, bright:1, bgcolor:'#000000', color1:'#000000', color2:'#000000', color3:'#000000', ditherEnabled:true, ditherGrid:5, ditherPixel:1, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ff0066', ditherTintStr:1 },
   cosmos: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#ffffff', shadow:0.05, bright:0.05, bgcolor:'#000000', color1:'#f77e2d', color2:'#32374a', color3:'#f5f5f5', ditherEnabled:false, ditherGrid:4, ditherPixel:1, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ffffff', ditherTintStr:0 },
   pink: { feed:0.054, kill:0.063, iteration:10, glassColor:'#ff88aa', shadow:0.1, bright:0.08, bgcolor:'#1a0a10', color1:'#ff6699', color2:'#cc3366', color3:'#ffccdd', ditherEnabled:true, ditherGrid:3, ditherPixel:1.5, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ff88aa', ditherTintStr:0.3 },
   blue: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#aaccff', shadow:0.08, bright:0.06, bgcolor:'#050a14', color1:'#3366cc', color2:'#1a2744', color3:'#cce0ff', ditherEnabled:true, ditherGrid:5, ditherPixel:1.2, ditherGrayscale:false, ditherInvert:false, ditherTint:'#6699ff', ditherTintStr:0.2 },
