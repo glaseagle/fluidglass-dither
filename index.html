@@ -155,6 +155,9 @@ canvas#gl { width: 100%; height: 100%; display: block; }
       <button class="preset-btn" onclick="saveAsDefault()">Save as Default</button>
       <button class="preset-btn" onclick="loadDefault()">Load Default</button>
       <button class="preset-btn" onclick="clearDefault()">Reset to Factory</button>
+      <div style="border-top:1px solid rgba(255,255,255,0.08);margin:6px 0;"></div>
+      <button class="preset-btn" onclick="exportSettings()">Export to Clipboard</button>
+      <button class="preset-btn" onclick="importSettings()">Import from Clipboard</button>
       <div id="saveMsg" style="color:#6a6;font-size:10px;text-align:center;display:none;"></div>
     </div>
   </div>
@@ -281,6 +284,36 @@ function clearDefault() {
   localStorage.removeItem('fluidglass-dither-defaults');
   applyPreset('default');
   showSaveMsg('Reset to factory defaults.');
+}
+
+function exportSettings() {
+  const json = JSON.stringify(getCurrentSettings());
+  navigator.clipboard.writeText(json).then(() => {
+    showSaveMsg('Settings copied to clipboard!');
+  }).catch(() => {
+    // Fallback: prompt with the text
+    prompt('Copy this settings string:', json);
+  });
+}
+
+function importSettings() {
+  navigator.clipboard.readText().then(text => {
+    try {
+      const s = JSON.parse(text);
+      applySettings(s);
+      saveAsDefault();
+      showSaveMsg('Settings imported & saved!');
+    } catch { showSaveMsg('Invalid settings data.'); }
+  }).catch(() => {
+    const text = prompt('Paste your settings string:');
+    if (!text) return;
+    try {
+      const s = JSON.parse(text);
+      applySettings(s);
+      saveAsDefault();
+      showSaveMsg('Settings imported & saved!');
+    } catch { showSaveMsg('Invalid settings data.'); }
+  });
 }
 
 // Auto-load saved defaults on startup
