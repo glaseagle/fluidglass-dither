@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluid Glass + Dithering</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@100..700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Roboto Mono', monospace; }
+canvas#gl { width: 100%; height: 100%; display: block; }
+
+/* Control Panel */
+#panel {
+  position: fixed; top: 10px; right: 10px;
+  width: 280px; max-height: calc(100vh - 20px);
+  background: rgba(0,0,0,0.85); color: #ddd;
+  border-radius: 8px; font-size: 12px;
+  overflow-y: auto; z-index: 100;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.1);
+  scrollbar-width: thin; scrollbar-color: #444 transparent;
+}
+#panel::-webkit-scrollbar { width: 4px; }
+#panel::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+#panel-toggle {
+  position: fixed; top: 10px; right: 10px; z-index: 101;
+  background: rgba(0,0,0,0.7); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px;
+  display: none;
+}
+.section { border-bottom: 1px solid rgba(255,255,255,0.08); }
+.section-header {
+  padding: 8px 12px; cursor: pointer; user-select: none;
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: #aaa;
+}
+.section-header:hover { color: #fff; }
+.section-header .arrow { transition: transform 0.2s; }
+.section-header.collapsed .arrow { transform: rotate(-90deg); }
+.section-body { padding: 4px 12px 10px; }
+.section-body.hidden { display: none; }
+.ctrl { margin-bottom: 6px; }
+.ctrl label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; color: #999; font-size: 11px; }
+.ctrl label span.val { color: #ccc; font-variant-numeric: tabular-nums; }
+.ctrl input[type="range"] {
+  width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+  background: #333; border-radius: 2px; outline: none;
+}
+.ctrl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  background: #fff; border-radius: 50%; cursor: pointer;
+}
+.ctrl input[type="color"] {
+  width: 100%; height: 28px; border: none; border-radius: 4px;
+  cursor: pointer; background: none; padding: 0;
+}
+.ctrl input[type="text"], .ctrl textarea {
+  width: 100%; background: #222; border: 1px solid #444; color: #fff;
+  border-radius: 4px; padding: 4px 6px; font-family: inherit; font-size: 12px;
+  resize: vertical;
+}
+.ctrl textarea { min-height: 40px; }
+.ctrl-check { display: flex; align-items: center; gap: 6px; }
+.ctrl-check input { accent-color: #888; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<button id="panel-toggle" onclick="document.getElementById('panel').style.display='block';this.style.display='none';">Settings</button>
+
+<div id="panel">
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Display Text <span class="arrow">▼</span></div>
+    <div class="section-body">
+      <div class="ctrl"><textarea id="displayText" rows="2">{{time}}</textarea></div>
+      <div class="ctrl" style="color:#666;font-size:10px;">Use {{time}} for live clock, {{date}} for date, or type anything.</div>
+      <div class="ctrl"><label>Font Size <span class="val" id="fontSizeVal">1.0</span></label>
+        <input type="range" id="fontSize" min="0.2" max="3" step="0.1" value="1.0"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Reaction-Diffusion <span class="arrow">▼</span></div>
+    <div class="section-body">
+      <div class="ctrl"><label>Feed <span class="val" id="feedVal">0.0540</span></label>
+        <input type="range" id="feed" min="0.01" max="0.1" step="0.0001" value="0.0540"></div>
+      <div class="ctrl"><label>Kill <span class="val" id="killVal">0.0616</span></label>
+        <input type="range" id="kill" min="0.01" max="0.1" step="0.0001" value="0.0616"></div>
+      <div class="ctrl"><label>Iterations <span class="val" id="iterationVal">10</span></label>
+        <input type="range" id="iteration" min="1" max="30" step="1" value="10"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Glass <span class="arrow">▼</span></div>
+    <div class="section-body">
+      <div class="ctrl"><label>Glass Color</label>
+        <input type="color" id="glassColor" value="#ffffff"></div>
+      <div class="ctrl"><label>Shadow <span class="val" id="shadowVal">0.05</span></label>
+        <input type="range" id="shadow" min="0" max="1" step="0.01" value="0.05"></div>
+      <div class="ctrl"><label>Brightness <span class="val" id="brightVal">0.05</span></label>
+        <input type="range" id="bright" min="0" max="1" step="0.01" value="0.05"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Background Colors <span class="arrow">▼</span></div>
+    <div class="section-body">
+      <div class="ctrl"><label>Background</label>
+        <input type="color" id="bgcolor" value="#000000"></div>
+      <div class="ctrl"><label>Circle 1 (Hour)</label>
+        <input type="color" id="color1" value="#f77e2d"></div>
+      <div class="ctrl"><label>Circle 2 (Minute)</label>
+        <input type="color" id="color2" value="#32374a"></div>
+      <div class="ctrl"><label>Circle 3 (Second)</label>
+        <input type="color" id="color3" value="#f5f5f5"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Dithering <span class="arrow">▼</span></div>
+    <div class="section-body">
+      <div class="ctrl ctrl-check"><input type="checkbox" id="ditherEnabled" checked><label for="ditherEnabled">Enable Dithering</label></div>
+      <div class="ctrl"><label>Grid Size <span class="val" id="ditherGridVal">4</span></label>
+        <input type="range" id="ditherGrid" min="1" max="16" step="1" value="4"></div>
+      <div class="ctrl"><label>Pixel Size Ratio <span class="val" id="ditherPixelVal">1.0</span></label>
+        <input type="range" id="ditherPixel" min="0.5" max="4" step="0.1" value="1.0"></div>
+      <div class="ctrl ctrl-check"><input type="checkbox" id="ditherGrayscale"><label for="ditherGrayscale">Grayscale Only</label></div>
+      <div class="ctrl ctrl-check"><input type="checkbox" id="ditherInvert"><label for="ditherInvert">Invert Colors</label></div>
+      <div class="ctrl"><label>Dither Tint Color</label>
+        <input type="color" id="ditherTint" value="#ffffff"></div>
+      <div class="ctrl"><label>Tint Strength <span class="val" id="ditherTintStrVal">0.0</span></label>
+        <input type="range" id="ditherTintStr" min="0" max="1" step="0.01" value="0.0"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Presets <span class="arrow">▼</span></div>
+    <div class="section-body" style="display:flex;flex-wrap:wrap;gap:4px;">
+      <button class="preset-btn" onclick="applyPreset('default')">Default</button>
+      <button class="preset-btn" onclick="applyPreset('cosmos')">Cosmos Black</button>
+      <button class="preset-btn" onclick="applyPreset('pink')">Sticky Pink</button>
+      <button class="preset-btn" onclick="applyPreset('blue')">Cozzy Blue</button>
+      <button class="preset-btn" onclick="applyPreset('retro')">Retro Dither</button>
+      <button class="preset-btn" onclick="applyPreset('newspaper')">Newspaper</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">Save / Load <span class="arrow">▼</span></div>
+    <div class="section-body" style="display:flex;flex-direction:column;gap:4px;">
+      <button class="preset-btn" onclick="saveAsDefault()">Save as Default</button>
+      <button class="preset-btn" onclick="loadDefault()">Load Default</button>
+      <button class="preset-btn" onclick="clearDefault()">Reset to Factory</button>
+      <div id="saveMsg" style="color:#6a6;font-size:10px;text-align:center;display:none;"></div>
+    </div>
+  </div>
+
+  <div style="padding:8px 12px;text-align:center;">
+    <button class="preset-btn" onclick="document.getElementById('panel').style.display='none';document.getElementById('panel-toggle').style.display='block';">Hide Panel</button>
+  </div>
+</div>
+
+<style>
+.preset-btn {
+  background: #333; color: #ccc; border: 1px solid #555; border-radius: 4px;
+  padding: 4px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+}
+.preset-btn:hover { background: #555; color: #fff; }
+</style>
+
+<script>
+// ============================================================
+// PANEL HELPERS
+// ============================================================
+function toggleSection(header) {
+  header.classList.toggle('collapsed');
+  header.nextElementSibling.classList.toggle('hidden');
+}
+
+function hexToRgb(hex) {
+  hex = hex.replace('#','');
+  return [parseInt(hex.substring(0,2),16)/255, parseInt(hex.substring(2,4),16)/255, parseInt(hex.substring(4,6),16)/255];
+}
+
+function rgbToHex(r,g,b) {
+  return '#' + [r,g,b].map(v => Math.round(v*255).toString(16).padStart(2,'0')).join('');
+}
+
+// Bind slider to display val
+document.querySelectorAll('.ctrl input[type="range"]').forEach(el => {
+  const valEl = document.getElementById(el.id + 'Val');
+  if (valEl) { el.addEventListener('input', () => { valEl.textContent = parseFloat(el.value).toFixed(el.step.includes('.') ? el.step.split('.')[1].length : 0); }); }
+});
+
+// ============================================================
+// PRESETS
+// ============================================================
+const presets = {
+  default: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#ffffff', shadow:0.05, bright:0.05, bgcolor:'#000000', color1:'#f77e2d', color2:'#32374a', color3:'#f5f5f5', ditherEnabled:true, ditherGrid:4, ditherPixel:1, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ffffff', ditherTintStr:0 },
+  cosmos: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#ffffff', shadow:0.05, bright:0.05, bgcolor:'#000000', color1:'#f77e2d', color2:'#32374a', color3:'#f5f5f5', ditherEnabled:false, ditherGrid:4, ditherPixel:1, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ffffff', ditherTintStr:0 },
+  pink: { feed:0.054, kill:0.063, iteration:10, glassColor:'#ff88aa', shadow:0.1, bright:0.08, bgcolor:'#1a0a10', color1:'#ff6699', color2:'#cc3366', color3:'#ffccdd', ditherEnabled:true, ditherGrid:3, ditherPixel:1.5, ditherGrayscale:false, ditherInvert:false, ditherTint:'#ff88aa', ditherTintStr:0.3 },
+  blue: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#aaccff', shadow:0.08, bright:0.06, bgcolor:'#050a14', color1:'#3366cc', color2:'#1a2744', color3:'#cce0ff', ditherEnabled:true, ditherGrid:5, ditherPixel:1.2, ditherGrayscale:false, ditherInvert:false, ditherTint:'#6699ff', ditherTintStr:0.2 },
+  retro: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#00ff00', shadow:0.1, bright:0.1, bgcolor:'#001100', color1:'#00cc00', color2:'#004400', color3:'#00ff00', ditherEnabled:true, ditherGrid:6, ditherPixel:2, ditherGrayscale:true, ditherInvert:false, ditherTint:'#00ff00', ditherTintStr:0.8 },
+  newspaper: { feed:0.054, kill:0.0616, iteration:10, glassColor:'#ffffff', shadow:0.05, bright:0.05, bgcolor:'#222222', color1:'#888888', color2:'#444444', color3:'#cccccc', ditherEnabled:true, ditherGrid:3, ditherPixel:1, ditherGrayscale:true, ditherInvert:true, ditherTint:'#ffffff', ditherTintStr:0 },
+};
+
+function applyPreset(name) {
+  const p = presets[name]; if (!p) return;
+  applySettings(p);
+}
+
+// ============================================================
+// SAVE / LOAD DEFAULT SETTINGS
+// ============================================================
+function getCurrentSettings() {
+  return {
+    displayText: document.getElementById('displayText').value,
+    fontSize: parseFloat(document.getElementById('fontSize').value),
+    feed: parseFloat(document.getElementById('feed').value),
+    kill: parseFloat(document.getElementById('kill').value),
+    iteration: parseInt(document.getElementById('iteration').value),
+    glassColor: document.getElementById('glassColor').value,
+    shadow: parseFloat(document.getElementById('shadow').value),
+    bright: parseFloat(document.getElementById('bright').value),
+    bgcolor: document.getElementById('bgcolor').value,
+    color1: document.getElementById('color1').value,
+    color2: document.getElementById('color2').value,
+    color3: document.getElementById('color3').value,
+    ditherEnabled: document.getElementById('ditherEnabled').checked,
+    ditherGrid: parseFloat(document.getElementById('ditherGrid').value),
+    ditherPixel: parseFloat(document.getElementById('ditherPixel').value),
+    ditherGrayscale: document.getElementById('ditherGrayscale').checked,
+    ditherInvert: document.getElementById('ditherInvert').checked,
+    ditherTint: document.getElementById('ditherTint').value,
+    ditherTintStr: parseFloat(document.getElementById('ditherTintStr').value),
+  };
+}
+
+function applySettings(p) {
+  const setSlider = (id, val) => { const el=document.getElementById(id); el.value=val; const v=document.getElementById(id+'Val'); if(v) v.textContent=parseFloat(val).toFixed(String(el.step).includes('.')?el.step.split('.')[1].length:0); };
+  if (p.displayText !== undefined) document.getElementById('displayText').value = p.displayText;
+  if (p.fontSize !== undefined) setSlider('fontSize', p.fontSize);
+  setSlider('feed', p.feed); setSlider('kill', p.kill); setSlider('iteration', p.iteration);
+  document.getElementById('glassColor').value = p.glassColor;
+  setSlider('shadow', p.shadow); setSlider('bright', p.bright);
+  document.getElementById('bgcolor').value = p.bgcolor;
+  document.getElementById('color1').value = p.color1;
+  document.getElementById('color2').value = p.color2;
+  document.getElementById('color3').value = p.color3;
+  document.getElementById('ditherEnabled').checked = p.ditherEnabled;
+  setSlider('ditherGrid', p.ditherGrid); setSlider('ditherPixel', p.ditherPixel);
+  document.getElementById('ditherGrayscale').checked = p.ditherGrayscale;
+  document.getElementById('ditherInvert').checked = p.ditherInvert;
+  document.getElementById('ditherTint').value = p.ditherTint;
+  setSlider('ditherTintStr', p.ditherTintStr);
+}
+
+function showSaveMsg(msg) {
+  const el = document.getElementById('saveMsg');
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 2000);
+}
+
+function saveAsDefault() {
+  localStorage.setItem('fluidglass-dither-defaults', JSON.stringify(getCurrentSettings()));
+  showSaveMsg('Settings saved as default!');
+}
+
+function loadDefault() {
+  const saved = localStorage.getItem('fluidglass-dither-defaults');
+  if (!saved) { showSaveMsg('No saved defaults found.'); return; }
+  applySettings(JSON.parse(saved));
+  showSaveMsg('Default settings loaded.');
+}
+
+function clearDefault() {
+  localStorage.removeItem('fluidglass-dither-defaults');
+  applyPreset('default');
+  showSaveMsg('Reset to factory defaults.');
+}
+
+// Auto-load saved defaults on startup
+(function() {
+  const saved = localStorage.getItem('fluidglass-dither-defaults');
+  if (saved) applySettings(JSON.parse(saved));
+})();
+
+// ============================================================
+// WEBGL SETUP (OGL-like but vanilla WebGL for zero dependencies)
+// ============================================================
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) { alert('WebGL2 required'); throw new Error('no webgl2'); }
+
+// Enable float textures
+const extColor = gl.getExtension('EXT_color_buffer_float');
+const extFloat = gl.getExtension('EXT_color_buffer_half_float');
+
+// Fullscreen triangle
+const quadVAO = gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s), src); return null; }
+  return s;
+}
+
+function createProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(vs, gl.VERTEX_SHADER));
+  gl.attachShader(p, compileShader(fs, gl.FRAGMENT_SHADER));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(p)); return null; }
+  return p;
+}
+
+function createRT(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fb, width: w, height: h, setSize(nw, nh) { this.width=nw; this.height=nh; gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, nw, nh, 0, gl.RGBA, gl.HALF_FLOAT, null); } };
+}
+
+function findUniformType(prog, name) {
+  const count = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < count; i++) {
+    const info = gl.getActiveUniform(prog, i);
+    if (info && info.name === name) return info.type;
+  }
+  return gl.FLOAT;
+}
+
+function drawQuad(prog, target, uniforms) {
+  gl.useProgram(prog);
+  if (target) { gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb); gl.viewport(0, 0, target.width, target.height); }
+  else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); }
+  let texUnit = 0;
+  for (const [name, val] of Object.entries(uniforms)) {
+    const loc = gl.getUniformLocation(prog, name);
+    if (loc === null) continue;
+    if (val && val.tex !== undefined) { gl.activeTexture(gl.TEXTURE0 + texUnit); gl.bindTexture(gl.TEXTURE_2D, val.tex); gl.uniform1i(loc, texUnit); texUnit++; }
+    else if (Array.isArray(val)) { if (val.length===2) gl.uniform2f(loc, val[0], val[1]); else if (val.length===3) gl.uniform3f(loc, val[0], val[1], val[2]); }
+    else if (typeof val === 'boolean') gl.uniform1i(loc, val ? 1 : 0);
+    else if (typeof val === 'number') {
+      // Use uniform type introspection to decide int vs float
+      const info = findUniformType(prog, name);
+      if (info === gl.INT || info === gl.SAMPLER_2D || info === gl.BOOL) gl.uniform1i(loc, val);
+      else gl.uniform1f(loc, val);
+    }
+  }
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindVertexArray(null);
+}
+
+// ============================================================
+// SHADERS
+// ============================================================
+const VERT = `#version 300 es
+in vec2 position;
+out vec2 vUv;
+void main() {
+  vUv = position * 0.5 + 0.5;
+  gl_Position = vec4(position, 0, 1);
+}`;
+
+const UTIL = `
+#define PI 3.14159265358979
+vec2 packFloat(float v) { return vec2(v); }
+float unpackFloat(vec2 v) { return v.x; }
+vec4 packField(vec2 v) { return v.rgrg; }
+vec2 unpackField(vec4 v) { return v.rg; }
+`;
+
+// --- Initialize Pressure ---
+const initPressureProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+void main() { fragColor = vec4(0.0); }
+`);
+
+// --- Display Texture ---
+const displayTexProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D textureMap;
+uniform bool showAlpha;
+void main() {
+  fragColor = texture(textureMap, vUv);
+  if (showAlpha) fragColor.rgb = fragColor.aaa;
+}
+`);
+
+// --- Fluid Velocity ---
+const fluidVelProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D pressureMap;
+uniform sampler2D velocityMap;
+uniform sampler2D flowMap;
+uniform vec2 uSize;
+${UTIL}
+void main() {
+  vec2 delta = 2.0 / uSize;
+  vec2 velocity = unpackField(texture(velocityMap, vUv));
+  vec2 vl = unpackField(texture(velocityMap, vUv + delta * vec2(-1,0)));
+  vec2 vr = unpackField(texture(velocityMap, vUv + delta * vec2(1,0)));
+  vec2 vb = unpackField(texture(velocityMap, vUv + delta * vec2(0,-1)));
+  vec2 vt = unpackField(texture(velocityMap, vUv + delta * vec2(0,1)));
+  vec2 flow = unpackField(texture(flowMap, vUv));
+  float center = texture(pressureMap, vUv).a;
+  float right = texture(pressureMap, vUv + delta * vec2(1,0)).a;
+  float left = texture(pressureMap, vUv + delta * vec2(-1,0)).a;
+  float top = texture(pressureMap, vUv + delta * vec2(0,1)).a;
+  float bottom = texture(pressureMap, vUv + delta * vec2(0,-1)).a;
+  vec2 gradient = vec2(right - left, top - bottom);
+  vec2 diffusion = (vl + vr + vb + vt) / 4.0 - velocity;
+  vec2 acceleration = -gradient * 0.01;
+  velocity = velocity * 0.9995 + acceleration / (center + 0.001) + diffusion + flow * 0.1;
+  float magnitude = length(velocity);
+  velocity = velocity / max(1e-5, magnitude) * min(10.0, magnitude);
+  fragColor = packField(velocity);
+}
+`);
+
+// --- Velocity to Pressure ---
+const velToPresProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D velocityMap;
+uniform vec2 uSize;
+${UTIL}
+void main() {
+  vec2 delta = 4.0 / uSize;
+  vec2 center = unpackField(texture(velocityMap, vUv));
+  vec2 left = unpackField(texture(velocityMap, vUv + delta * vec2(-1,0)));
+  vec2 right = unpackField(texture(velocityMap, vUv + delta * vec2(1,0)));
+  vec2 bottom = unpackField(texture(velocityMap, vUv + delta * vec2(0,-1)));
+  vec2 top = unpackField(texture(velocityMap, vUv + delta * vec2(0,1)));
+  float divergent = (right.x - left.x) + (top.y - bottom.y);
+  fragColor.rg = packFloat(divergent / 4.0 * 0.5 + 0.5);
+  fragColor.ba = vec2(0.0, 1.0);
+}
+`);
+
+// --- Velocity Correction ---
+const velCorrProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D pressureMap;
+uniform sampler2D velocityMap;
+uniform vec2 uSize;
+${UTIL}
+void main() {
+  vec2 delta = 4.0 / uSize;
+  float center = unpackFloat(texture(pressureMap, vUv).rg);
+  float left = unpackFloat(texture(pressureMap, vUv + delta * vec2(-1,0)).rg);
+  float right = unpackFloat(texture(pressureMap, vUv + delta * vec2(1,0)).rg);
+  float bottom = unpackFloat(texture(pressureMap, vUv + delta * vec2(0,-1)).rg);
+  float top = unpackFloat(texture(pressureMap, vUv + delta * vec2(0,1)).rg);
+  vec2 gradient = vec2(right - left, top - bottom);
+  vec2 velocity = unpackField(texture(velocityMap, vUv)) + gradient * 2.0;
+  fragColor = packField(velocity);
+}
+`);
+
+// --- Advection ---
+const advectProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D inputMap;
+uniform sampler2D velocityMap;
+uniform vec2 uSize;
+${UTIL}
+void main() {
+  vec2 delta = 1.0 / uSize;
+  vec2 velocity = unpackField(texture(velocityMap, vUv));
+  vec2 displacement = -velocity;
+  float factor = 0.9;
+  vec4 displaced = texture(inputMap, vUv + displacement * delta * 0.1);
+  fragColor = texture(inputMap, vUv) * (1.0 - factor) + displaced * factor;
+}
+`);
+
+// --- Reaction Diffusion ---
+const rdProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D pressureMap;
+uniform sampler2D maskTexture;
+uniform float feed0;
+uniform float kill0;
+uniform vec2 uSize;
+${UTIL}
+void main() {
+  vec2 delta = 1.0 / uSize;
+  vec4 center = texture(pressureMap, vUv);
+  vec4 maskInput = texture(maskTexture, vUv);
+  vec4 left = texture(pressureMap, vUv + delta * vec2(-1,0));
+  vec4 right = texture(pressureMap, vUv + delta * vec2(1,0));
+  vec4 bottom = texture(pressureMap, vUv + delta * vec2(0,-1));
+  vec4 top = texture(pressureMap, vUv + delta * vec2(0,1));
+  vec4 c1 = texture(pressureMap, vUv + delta * vec2(-1,1));
+  vec4 c2 = texture(pressureMap, vUv + delta * vec2(1,1));
+  vec4 c3 = texture(pressureMap, vUv + delta * vec2(-1,-1));
+  vec4 c4 = texture(pressureMap, vUv + delta * vec2(1,-1));
+  vec4 laplacian = (left + right + bottom + top) * 0.2 + (c1 + c2 + c3 + c4) * 0.05 - center;
+  float feed = feed0 + (vUv.x - 0.5) * 0.02;
+  float kill_compensated = kill0 - 7.0 * ((feed - 0.065) * (feed - 0.065) - (feed0 - 0.065) * (feed0 - 0.065));
+  float kill = kill_compensated + abs(vUv.y - 0.5) * 0.04;
+  float mask = maskInput.r * 0.1;
+  vec3 diffusion = vec3(0.4, 0.1, 0.1) * 8.0;
+  vec3 reaction = vec3(-1.0, 1.0, 1.0);
+  vec3 balance = vec3(1.0, mask, mask);
+  vec3 damping = vec3(feed, feed + kill, feed + kill);
+  vec3 density = vec3(1.0, 0.0, 0.0);
+  vec3 change = diffusion * laplacian.xyz + reaction * center.x * center.y * center.z + (balance - center.xyz) * damping;
+  vec3 result = center.xyz + change * 0.3;
+  fragColor.xyz = result.xyz;
+  fragColor.a = 1.0 - dot(density, result);
+}
+`);
+
+// --- Background Clock ---
+const bgClockProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform vec2 uSize;
+uniform vec3 clockHands;
+uniform vec3 bgcolor;
+uniform vec3 circlecolor1;
+uniform vec3 circlecolor2;
+uniform vec3 circlecolor3;
+uniform vec2 parallax;
+${UTIL}
+vec3 drawCircle(vec2 coord, float t) {
+  float radius = max(uSize.x, uSize.y) * 0.5;
+  vec2 origin = vec2(sin(t * PI * 2.0), cos(t * PI * 2.0)) * radius;
+  coord -= origin;
+  float r = length(coord) / radius;
+  float f = 1.0 / (abs(r - 1.0) * 100.0 + 1.0);
+  vec2 displacement = -coord / (sqrt(max(0.0, 1.0 - r*r)) + 0.01) * f * step(r, 1.0);
+  f = 1.0 / (abs(r - 1.0) * 200.0 + 1.0);
+  f = f + step(r, 1.0) * 0.05 * (r + 1.0);
+  return vec3(displacement, f);
+}
+void main() {
+  vec2 coord = (vUv - 0.5) * uSize + parallax * 2.0;
+  vec3 circle3 = drawCircle(coord, clockHands.z / 60.0);
+  coord += circle3.xy * 0.1 + parallax * 10.0;
+  vec3 circle2 = drawCircle(coord, clockHands.y / 60.0);
+  coord += circle2.xy * 0.1 + parallax * 20.0;
+  vec3 circle1 = drawCircle(coord, clockHands.x / 12.0);
+  vec3 color = bgcolor;
+  color = mix(color, circlecolor1, circle1.z);
+  color = mix(color, circlecolor2, circle2.z);
+  color = mix(color, circlecolor3, circle3.z);
+  fragColor = vec4(color, 1.0);
+}
+`);
+
+// --- Glass Shading ---
+const glassProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D pressureMap;
+uniform sampler2D backgroundMap;
+uniform vec3 glassColor;
+uniform float shadowFactor;
+uniform float brightFactor;
+uniform vec2 parallax;
+uniform vec2 uSize;
+${UTIL}
+vec3 my_reflection(vec3 normal, vec3 incoming) {
+  float cos_value = dot(incoming, normal);
+  vec3 cos_vec = cos_value * normal;
+  vec3 reflected = incoming - cos_vec * 2.0;
+  return reflected / length(reflected);
+}
+vec3 my_refraction(vec3 normal, vec3 incoming, float n2) {
+  float cos_value = dot(incoming, normal);
+  vec3 cos_vec = cos_value * normal;
+  vec3 sin_vec = incoming - cos_vec;
+  float sin_value = length(sin_vec);
+  float cos_value22 = n2*n2 - sin_value*sin_value;
+  if (cos_value22 < 0.0) return my_reflection(normal, incoming);
+  float cos_value2 = sqrt(cos_value22);
+  vec3 refracted = cos_value2 * normal + sin_vec;
+  return refracted / length(refracted);
+}
+float thickness(vec4 p) {
+  float t = smoothstep(0.45, 0.95, p.a);
+  return sqrt(t);
+}
+void main() {
+  vec2 delta = 1.0 / uSize;
+  vec4 final_color = vec4(0.0);
+  for (int si = 0; si < 2; si++) {
+    for (int sj = 0; sj < 2; sj++) {
+      vec2 uv = vUv + delta * vec2(float(si), float(sj)) * 0.5;
+      vec4 center = texture(pressureMap, uv);
+      vec4 left = texture(pressureMap, uv + delta * vec2(-1,0));
+      vec4 right = texture(pressureMap, uv + delta * vec2(1,0));
+      vec4 bottom = texture(pressureMap, uv + delta * vec2(0,-1));
+      vec4 top = texture(pressureMap, uv + delta * vec2(0,1));
+      vec2 gradient = vec2(thickness(right)-thickness(left), thickness(top)-thickness(bottom)) * 0.7;
+      vec3 normal = normalize(vec3(-gradient.x, -gradient.y, 1.0));
+      vec3 incoming = normalize(vec3(parallax, 1));
+      float n2 = 1.33;
+      vec3 refracted = my_refraction(normal, incoming, n2);
+      refracted = my_refraction(normal * vec3(-1,-1,1), refracted, 1.0/n2);
+      vec3 reflected = my_reflection(normal, incoming);
+      vec2 displacement = refracted.xy / refracted.z - parallax;
+      float r_r = texture(backgroundMap, uv + displacement * 1.0).r;
+      float r_g = texture(backgroundMap, uv + displacement * 1.05).g;
+      float r_b = texture(backgroundMap, uv + displacement * 1.1).b;
+      vec4 background_T = vec4(r_r, r_g, r_b, 1.0);
+      vec3 ic = incoming; ic.z = clamp(ic.z, 0.8, 1.0);
+      ic.xy /= max(length(ic.xy), 0.0001); ic.xy *= sqrt(1.0 - ic.z);
+      vec3 rc = my_reflection(normal, ic);
+      float light = abs(dot(rc, vec3(-0.1, 0.6, 0.01)));
+      light = step(0.1, light) * light * 8.0;
+      vec4 background_R = vec4(vec3(light), 0) * vec4(glassColor, 1.0);
+      float R = pow(1.0 - normal.z, 0.5) * smoothstep(0.0, 0.01, thickness(center));
+      float t = thickness(center);
+      vec4 color = background_R * R + background_T * (1.0 - R) * (1.0 - shadowFactor * t) + (t * brightFactor);
+      color.rgb = color.rgb * mix(vec3(1), glassColor, t);
+      final_color += color * 0.25;
+    }
+  }
+  fragColor = final_color;
+}
+`);
+
+// --- Dithering Post-Process ---
+const ditherProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D inputBuffer;
+uniform vec2 resolution;
+uniform float gridSize;
+uniform float pixelSizeRatio;
+uniform float grayscaleOnly;
+uniform float invertColor;
+uniform float ditherEnabled;
+uniform vec3 tintColor;
+uniform float tintStrength;
+
+bool getValue(float brightness, vec2 pos) {
+  if (brightness > 16.0 / 17.0) return false;
+  if (brightness < 1.0 / 17.0) return true;
+  vec2 pixel = floor(mod(pos / gridSize, 4.0));
+  int x = int(pixel.x);
+  int y = int(pixel.y);
+  if (x == 0) { if (y==0) return brightness < 16.0/17.0; if (y==1) return brightness < 5.0/17.0; if (y==2) return brightness < 13.0/17.0; return brightness < 1.0/17.0; }
+  else if (x == 1) { if (y==0) return brightness < 8.0/17.0; if (y==1) return brightness < 12.0/17.0; if (y==2) return brightness < 4.0/17.0; return brightness < 9.0/17.0; }
+  else if (x == 2) { if (y==0) return brightness < 14.0/17.0; if (y==1) return brightness < 2.0/17.0; if (y==2) return brightness < 15.0/17.0; return brightness < 3.0/17.0; }
+  else { if (y==0) return brightness < 6.0/17.0; if (y==1) return brightness < 10.0/17.0; if (y==2) return brightness < 7.0/17.0; return brightness < 11.0/17.0; }
+}
+
+void main() {
+  vec2 fragCoord = vUv * resolution;
+  float pixelSize = gridSize * pixelSizeRatio;
+  vec2 pixelatedUV = floor(fragCoord / pixelSize) * pixelSize / resolution;
+  vec3 baseColor = texture(inputBuffer, pixelatedUV).rgb;
+
+  if (ditherEnabled < 0.5) {
+    fragColor = vec4(baseColor, 1.0);
+    return;
+  }
+
+  float luminance = dot(baseColor, vec3(0.333333));
+  if (grayscaleOnly > 0.0) baseColor = vec3(luminance);
+
+  bool dithered = getValue(luminance, fragCoord);
+  vec3 ditherColor = dithered ? vec3(0.0) : baseColor;
+  vec2 currentPixel = floor(fragCoord / pixelSize);
+  vec2 originalPixel = floor(vUv * resolution / pixelSize);
+  baseColor = (currentPixel == originalPixel) ? ditherColor : baseColor;
+
+  if (invertColor > 0.0) baseColor = 1.0 - baseColor;
+
+  // Apply tint
+  baseColor = mix(baseColor, baseColor * tintColor, tintStrength);
+
+  fragColor = vec4(baseColor, 1.0);
+}
+`);
+
+// ============================================================
+// FLOWMAP (simplified -- mouse-driven velocity field)
+// ============================================================
+const flowmapSize = 512;
+let flowRT_read = createRT(flowmapSize, flowmapSize);
+let flowRT_write = createRT(flowmapSize, flowmapSize);
+
+const flowUpdateProg = createProgram(VERT, `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D prevFlow;
+uniform vec2 mouse;
+uniform vec2 velocity;
+uniform float falloff;
+uniform float alpha;
+uniform float dissipation;
+void main() {
+  vec4 prev = texture(prevFlow, vUv);
+  vec2 cursor = vUv - mouse;
+  // Aspect correction not needed for square flowmap
+  float dist = length(cursor);
+  float stamp = smoothstep(falloff, 0.0, dist) * alpha;
+  vec2 vel = velocity * stamp;
+  fragColor = vec4((prev.xy * dissipation + vel), prev.z * dissipation, prev.a * dissipation + stamp * 0.1);
+}
+`);
+
+let mousePos = [0.5, 0.5];
+let mouseVel = [0, 0];
+let simSize = [512, 512];
+
+// ============================================================
+// RENDER TARGETS
+// ============================================================
+let pressure = createRT(512, 512);
+let pressure_temp = createRT(512, 512);
+let velocity = createRT(512, 512);
+let velocity_temp = createRT(512, 512);
+let background = createRT(512, 512);
+let glassOutput = createRT(512, 512);
+
+// ============================================================
+// 2D CANVAS for mask text
+// ============================================================
+const maskCanvas = document.createElement('canvas');
+const maskCtx = maskCanvas.getContext('2d');
+let maskTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, maskTex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+const maskTexObj = { tex: maskTex };
+
+function renderMaskText(w, h) {
+  maskCanvas.width = w;
+  maskCanvas.height = h;
+  maskCtx.clearRect(0, 0, w, h);
+  // Flip vertically so canvas 2D (top-down) matches GL (bottom-up)
+  maskCtx.save();
+  maskCtx.translate(0, h);
+  maskCtx.scale(1, -1);
+  maskCtx.fillStyle = 'red';
+  maskCtx.textAlign = 'center';
+  maskCtx.textBaseline = 'middle';
+
+  let text = document.getElementById('displayText').value;
+  const fontScale = parseFloat(document.getElementById('fontSize').value);
+  const now = new Date();
+
+  const timeStr = [
+    now.getHours().toString().padStart(2,'0'),
+    now.getMinutes().toString().padStart(2,'0'),
+    now.getSeconds().toString().padStart(2,'0')
+  ].join(now.getMilliseconds() < 500 ? ':' : ' ');
+  const dateStr = now.toLocaleDateString();
+
+  text = text.replace(/\{\{time\}\}/g, timeStr).replace(/\{\{date\}\}/g, dateStr);
+  const lines = text.split('\n');
+
+  if (w > h * 1.5) {
+    const size = (w / 8) * fontScale;
+    maskCtx.font = Math.round(size) + 'px Roboto Mono';
+    lines.forEach((line, i) => {
+      const y = h/2 + (i - (lines.length-1)/2) * size * 1.2;
+      maskCtx.fillText(line, w/2, y);
+    });
+  } else {
+    const size = (h / 4) * fontScale;
+    maskCtx.font = Math.round(size) + 'px Roboto Mono';
+    lines.forEach((line, i) => {
+      const y = h/2 + (i - (lines.length-1)/2) * size * 1.2;
+      maskCtx.fillText(line, w/2, y);
+    });
+  }
+
+  maskCtx.restore();
+
+  gl.bindTexture(gl.TEXTURE_2D, maskTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+}
+
+// ============================================================
+// EVENT HANDLERS
+// ============================================================
+let needsResize = true;
+
+function resize() {
+  canvas.width = window.innerWidth * window.devicePixelRatio;
+  canvas.height = window.innerHeight * window.devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  needsResize = true;
+}
+window.addEventListener('resize', resize);
+resize();
+
+window.addEventListener('mousemove', e => {
+  mousePos = [e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight];
+  mouseVel = [e.movementX / window.innerWidth * simSize[0], -e.movementY / window.innerWidth * simSize[1]];
+});
+
+let prevTouch = null;
+window.addEventListener('touchmove', e => {
+  if (!e.touches.length) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  mousePos = [t.clientX / window.innerWidth, 1 - t.clientY / window.innerHeight];
+  if (prevTouch) {
+    mouseVel = [(t.clientX - prevTouch.x) / window.innerWidth * simSize[0], -(t.clientY - prevTouch.y) / window.innerWidth * simSize[1]];
+  }
+  prevTouch = { x: t.clientX, y: t.clientY };
+}, { passive: false });
+window.addEventListener('touchend', () => { prevTouch = null; });
+
+// Parallax from mouse movement
+let parallax = [0, 0];
+let motion = { x: 0, y: 0 };
+window.addEventListener('mousemove', e => {
+  motion.x += e.movementX * 0.001;
+  motion.y -= e.movementY * 0.001;
+});
+
+// ============================================================
+// INIT
+// ============================================================
+drawQuad(initPressureProg, pressure, {});
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+function frame() {
+  requestAnimationFrame(frame);
+
+  // Update parallax
+  parallax[0] += motion.x * 0.1;
+  parallax[1] += motion.y * 0.1;
+  parallax[0] *= 0.99;
+  parallax[1] *= 0.99;
+  motion.x *= 0.8;
+  motion.y *= 0.8;
+
+  // Read controls
+  const feed = parseFloat(document.getElementById('feed').value);
+  const kill = parseFloat(document.getElementById('kill').value);
+  const iteration = parseInt(document.getElementById('iteration').value);
+  const shadowVal = parseFloat(document.getElementById('shadow').value);
+  const brightVal = parseFloat(document.getElementById('bright').value);
+  const glassCol = hexToRgb(document.getElementById('glassColor').value);
+  const bgCol = hexToRgb(document.getElementById('bgcolor').value);
+  const c1 = hexToRgb(document.getElementById('color1').value);
+  const c2 = hexToRgb(document.getElementById('color2').value);
+  const c3 = hexToRgb(document.getElementById('color3').value);
+
+  // Handle resize
+  if (needsResize) {
+    needsResize = false;
+    // Save pressure/velocity to temp
+    drawQuad(displayTexProg, pressure_temp, { textureMap: pressure, showAlpha: false });
+    drawQuad(displayTexProg, velocity_temp, { textureMap: velocity, showAlpha: false });
+
+    const scale = Math.max(0.4, Math.min(0.8, (1024 / Math.min(canvas.width, canvas.height)) * window.devicePixelRatio));
+    const w = Math.round(canvas.width * scale / 4) * 4;
+    const h = Math.round(canvas.height * scale / 4) * 4;
+    simSize = [w, h];
+
+    pressure.setSize(w, h);
+    velocity.setSize(w, h);
+    background.setSize(w, h);
+
+    drawQuad(displayTexProg, pressure, { textureMap: pressure_temp, showAlpha: false });
+    drawQuad(displayTexProg, velocity, { textureMap: velocity_temp, showAlpha: false });
+
+    pressure_temp.setSize(w, h);
+    velocity_temp.setSize(w, h);
+
+    glassOutput.setSize(canvas.width, canvas.height);
+  }
+
+  // Update flowmap
+  drawQuad(flowUpdateProg, flowRT_write, {
+    prevFlow: flowRT_read,
+    mouse: mousePos,
+    velocity: mouseVel,
+    falloff: 0.12,
+    alpha: 0.8,
+    dissipation: 0.7
+  });
+  [flowRT_read, flowRT_write] = [flowRT_write, flowRT_read];
+  mouseVel = [0, 0];
+
+  // Render mask text
+  renderMaskText(simSize[0], simSize[1]);
+
+  // Fluid velocity
+  drawQuad(fluidVelProg, velocity_temp, {
+    pressureMap: pressure,
+    velocityMap: velocity,
+    flowMap: flowRT_read,
+    uSize: simSize
+  });
+
+  // Iterations
+  for (let i = 0; i < iteration; i++) {
+    drawQuad(velToPresProg, pressure_temp, { velocityMap: velocity_temp, uSize: simSize });
+    drawQuad(velCorrProg, velocity, { pressureMap: pressure_temp, velocityMap: velocity_temp, uSize: simSize });
+    drawQuad(advectProg, velocity_temp, { inputMap: velocity, velocityMap: velocity, uSize: simSize });
+    drawQuad(advectProg, pressure_temp, { inputMap: pressure, velocityMap: velocity, uSize: simSize });
+    drawQuad(rdProg, pressure, {
+      pressureMap: pressure_temp,
+      maskTexture: maskTexObj,
+      feed0: feed, kill0: kill,
+      uSize: simSize
+    });
+  }
+
+  drawQuad(displayTexProg, velocity, { textureMap: velocity_temp, showAlpha: false });
+
+  // Background
+  const now = new Date();
+  const clockHands = [
+    now.getHours() + now.getMinutes()/60 + now.getSeconds()/3600,
+    now.getMinutes() + now.getSeconds()/60 + now.getMilliseconds()/60000,
+    now.getSeconds() + now.getMilliseconds()/1000
+  ];
+  drawQuad(bgClockProg, background, {
+    uSize: [background.width, background.height],
+    parallax: parallax,
+    clockHands: clockHands,
+    bgcolor: bgCol,
+    circlecolor1: c1,
+    circlecolor2: c2,
+    circlecolor3: c3
+  });
+
+  // Glass shading -> render target
+  drawQuad(glassProg, glassOutput, {
+    pressureMap: pressure,
+    backgroundMap: background,
+    glassColor: glassCol,
+    shadowFactor: shadowVal,
+    brightFactor: brightVal,
+    parallax: parallax,
+    uSize: [pressure.width, pressure.height]
+  });
+
+  // Dithering post-process -> screen
+  const ditherOn = document.getElementById('ditherEnabled').checked;
+  const ditherGrid = parseFloat(document.getElementById('ditherGrid').value);
+  const ditherPixelR = parseFloat(document.getElementById('ditherPixel').value);
+  const ditherGray = document.getElementById('ditherGrayscale').checked;
+  const ditherInv = document.getElementById('ditherInvert').checked;
+  const ditherTintCol = hexToRgb(document.getElementById('ditherTint').value);
+  const ditherTintS = parseFloat(document.getElementById('ditherTintStr').value);
+
+  drawQuad(ditherProg, null, {
+    inputBuffer: glassOutput,
+    resolution: [canvas.width, canvas.height],
+    gridSize: ditherGrid,
+    pixelSizeRatio: ditherPixelR,
+    grayscaleOnly: ditherGray ? 1.0 : 0.0,
+    invertColor: ditherInv ? 1.0 : 0.0,
+    ditherEnabled: ditherOn ? 1.0 : 0.0,
+    tintColor: ditherTintCol,
+    tintStrength: ditherTintS
+  });
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
