@@ -6,7 +6,9 @@ A standalone WebGL2 demo combining a fluid glass simulation with a 4x4 Bayer ord
 
 ## Demo
 
-Open `index.html` in any modern browser, or serve it locally:
+**[Live Demo](https://glaseagle.github.io/fluidglass-dither/)**
+
+Or open `index.html` in any modern browser, or serve it locally:
 
 ```bash
 npx serve -s .
